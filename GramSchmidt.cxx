@@ -4,9 +4,7 @@
 #include <cmath>
 #include <omp.h>
 
-#define MATRIX_SIZE 1000
-#define NUM_THREADS 8
-
+#define MATRIX_SIZE 3
 
 //Друк матриці
 void printMatrix(double** matrix, int size) {
@@ -18,10 +16,10 @@ void printMatrix(double** matrix, int size) {
     }
 }
 
-
 //Ініціалізація матриці значеннями від 1 до 100
 void initializeMatrix(double** matrix, int size) {
-    //srand(static_cast<unsigned int>(time(nullptr)));
+    //Для створення випадкових чисел при кожному виклику програми
+    //srand(time(NULL)); 
     for (int i = 0; i < size; i++) {
         matrix[i] = new double[size];
         for (int j = 0; j < size; j++) {
@@ -33,41 +31,35 @@ void initializeMatrix(double** matrix, int size) {
 void gramSchmidt(double** matrix, int size) {
     //#pragma omp parallel for schedule(dynamic, 1)
     for (int j = 0; j < size; j++) {
-        
-        double norm = 0.0;
+        //Ортогоналізація поточного стовпця відносно попередніх стовпців
+        for (int k = 0; k < j; k++) {
+            double dotMatrix = 0.0;
+            // Обчислюємо скалярний добуток між j та k стовпцями
+            //reduction(+:dotMatrix) вказує, що кожен потік буде обчислювати локально значення dotMatrix, а потім ці значення будуть просумовані
+            #pragma omp parallel for reduction(+:dotMatrix)
+            for (int i = 0; i < size; i++) {
+                dotMatrix += matrix[i][k] * matrix[i][j];
+            }
+            
+            //Віднімання проекції стовпця k від стовпця j
+            #pragma omp parallel for
+            for (int i = 0; i < size; i++) {
+                matrix[i][j] -= dotMatrix * matrix[i][k];
+            }
+        }
 
-        //Обчислення норми стовпця j
-        #pragma omp parallel for reduction(+:norm) //num_threads(NUM_THREADS)
+        //Нормалізація отриманого ортогонального стовпця
+        double norm = 0.0;
+        #pragma omp parallel for reduction(+:norm)
         for (int i = 0; i < size; i++) {
             norm += matrix[i][j] * matrix[i][j];
         }
-        
-        norm = sqrt(norm);
 
-        //Нормалізація стовпця j
-        #pragma omp parallel for// num_threads(NUM_THREADS)
+        norm = std::sqrt(norm);
+
+        #pragma omp parallel for
         for (int i = 0; i < size; i++) {
             matrix[i][j] /= norm;
-        }
-
-        //Ортогоналізація наступних стовпців відносно стовпця j
-        //shared(matrix, j) вказує, що змінні matrix і j є спільними для всіх потоків
-        #pragma omp parallel for shared(matrix, j) //num_threads(NUM_THREADS)
-        for (int k = j + 1; k < size; k++) {
-            double dotMatrix = 0.0;
-
-            // Обчислюємо скалярний добуток між j-м та k-м стовпцями
-            //reduction(+:dotMatrix) вказує, що кожен потік буде обчислювати локально значення dotMatrix, а потім ці значення будуть просумовані
-            #pragma omp parallel for reduction(+:dotMatrix)// num_threads(NUM_THREADS)
-            for (int i = 0; i < size; i++) {
-                dotMatrix += matrix[i][j] * matrix[i][k];
-            }
-
-            //Віднімання проекції стовпця j від стовпця k
-            #pragma omp parallel for// num_threads(NUM_THREADS)
-            for (int i = 0; i < size; i++) {
-                matrix[i][k] -= dotMatrix * matrix[i][j];
-            }
         }
     }
 }
@@ -77,20 +69,21 @@ int main() {
     initializeMatrix(matrix, MATRIX_SIZE);
 
     //Друк ініціалізованої матриці
-    //printMatrix(matrix, MATRIX_SIZE);
-    //omp_get_max_threads()
-    //std::cout << "Threads." << omp_get_max_threads() << std::endl;
-    
+    //std::cout << "Initialized matrix: " << std::endl;
+    //printMatrix(matrix, MATRIX_SIZE);    
 
-    std::cout << "Start of algorithm execution." << std::endl;
+    std::cout << "Threads count:" << omp_get_max_threads() << "." << std::endl;
+
+    //std::cout << "Start of algorithm execution." << std::endl;
     double startTime = omp_get_wtime();
     gramSchmidt(matrix, MATRIX_SIZE);
     double endTime = omp_get_wtime();
-    std::cout << "End of algorithm execution." << std::endl;
+    //std::cout << "End of algorithm execution." << std::endl;
 
     std::cout << "Execution time: " << endTime - startTime << " seconds." << std::endl;
 
     //Друк результуючої матриці
+    //std::cout << "Result matrix: " << std::endl;
     //printMatrix(matrix, MATRIX_SIZE);
 
     for (int i = 0; i < MATRIX_SIZE; i++) {
